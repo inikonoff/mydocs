@@ -4,7 +4,7 @@ python-dotenv==1.0.1
 openai==1.51.1
 PyPDF2==3.0.1
 python-docx==1.1.2
-yt-dlp==2024.11.10
+yt-dlp
 requests==2.32.3
 pydub==0.25.1
 reportlab==4.2.0
