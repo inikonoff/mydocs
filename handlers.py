@@ -1,5 +1,7 @@
 from aiogram.types import WebAppInfo
 import os
+from aiogram import types
+
 
 # ... (импорты и db_op как в предыдущем ответе)
 
