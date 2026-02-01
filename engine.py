@@ -13,7 +13,7 @@ class GroqEngine:
     async def transcribe(self, file_path):
         client = random.choice(self.clients)
         file_name = os.path.basename(file_path)
-        # Гарантируем расширение для Whisper
+        # Гарантируем расширение для Whisper, чтобы не было ошибки 400
         if not any(file_name.lower().endswith(ext) for ext in ['.ogg', '.mp3', '.mp4', '.mpeg', '.m4a', '.wav']):
             file_name += ".ogg"
 
@@ -27,14 +27,13 @@ class GroqEngine:
                 return res
             except Exception as e:
                 logger.error(f"Whisper error: {e}")
-                return f"❌ Ошибка транскрибации: {e}"
+                return f"❌ Ошибка распознавания: {e}"
 
     async def get_response(self, prompt, system="You are a helpful assistant", force_light=False):
         client = random.choice(self.clients)
         
-        # ХИТРОСТЬ 1: Если текст большой или стоит флаг, используем 8b модель (у неё лимиты выше)
-        # Лимит бесплатного Groq для 70b ~ 6-15к токенов. Для 8b ~ 30к+.
-        selected_model = "llama-3.1-8b-instant" if (len(prompt) > 10000 or force_light) else "llama-3.3-70b-specdec"
+        # Если текст больше 12к символов или лимит уже был превышен — берем 8b модель
+        selected_model = "llama-3.1-8b-instant" if (len(prompt) > 12000 or force_light) else "llama-3.3-70b-specdec"
         
         try:
             res = await client.chat.completions.create(
@@ -46,7 +45,8 @@ class GroqEngine:
             )
             return res.choices[0].message.content
         except Exception as e:
+            # Если 70b упала по лимитам (TPM), мгновенно пробуем на 8b
             if "rate_limit" in str(e).lower() and selected_model != "llama-3.1-8b-instant":
-                # Если 70b упала по лимитам, пробуем автоматически переключиться на 8b
+                logger.info("Switching to 8b model due to rate limit.")
                 return await self.get_response(prompt, system, force_light=True)
             return f"AI Error: {e}"
