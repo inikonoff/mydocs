@@ -1,4 +1,8 @@
-import fitz, os, re, aiohttp, yt_dlp
+import fitz  # PyMuPDF
+import os
+import re
+import aiohttp
+import yt_dlp
 from docx import Document
 
 class Toolkit:
@@ -17,48 +21,39 @@ class Toolkit:
             subs = info.get('subtitles') or info.get('automatic_captions')
             if subs:
                 lang = 'ru' if 'ru' in subs else 'en'
-                # Ищем json3 формат для точных таймкодов
                 try:
+                    # Ищем json3 формат для извлечения таймкодов
                     url_json = next(s['url'] for s in subs[lang] if 'json3' in s['url'] or 'json' in s['url'])
                     async with aiohttp.ClientSession() as s:
                         async with s.get(url_json) as r:
                             data = await r.json()
                             res = []
-                            last_t = -60000
+                            last_t = -60000 # Метка раз в минуту
                             for ev in data.get('events', []):
                                 start = ev.get('tStartMs', 0)
-                                if start - last_t > 60000: # Таймкод каждую минуту
+                                if start - last_t > 60000:
                                     res.append(f"\n📍 [{Toolkit.format_ts(start)}]")
                                     last_t = start
                                 for seg in ev.get('segs', []):
                                     res.append(seg.get('utf8', '').strip())
                             return " ".join(res)
-                except: pass
+                except Exception as e:
+                    return f"Ошибка парсинга субтитров: {e}"
             return "NEED_WHISPER"
 
     @staticmethod
     async def parse_file(path):
         ext = path.split('.')[-1].lower()
         if ext == 'pdf':
-            with fitz.open(path) as doc: return "".join([p.get_text() for p in doc])
+            # PyMuPDF намного лучше извлекает текст
+            text = ""
+            with fitz.open(path) as doc:
+                for page in doc:
+                    text += page.get_text()
+            return text
         if ext in ['docx', 'doc']:
             return "\n".join([p.text for p in Document(path).paragraphs])
+        if ext == 'txt':
+            with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+                return f.read()
         return ""
-
-    @staticmethod
-    async def get_cloud_link(url):
-        if "yadi.sk" in url or "disk.yandex" in url:
-            api = f"https://cloud-api.yandex.net/v1/disk/public/resources/download?public_key={url}"
-            async with aiohttp.ClientSession() as s:
-                async with s.get(api) as r:
-                    if r.status == 200: return (await r.json()).get("href")
-        return None
-
-    @staticmethod
-    def export_file(text, fmt, uid):
-        path = f"data/res_{uid}.{fmt}"
-        if fmt == 'docx':
-            doc = Document(); doc.add_paragraph(text); doc.save(path)
-        else:
-            with open(path, 'w', encoding='utf-8') as f: f.write(text)
-        return path
