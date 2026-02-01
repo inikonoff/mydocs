@@ -65,7 +65,7 @@ def register_handlers(dp):
         
         # TWA кнопка (замени URL на свой)
         kb = types.InlineKeyboardMarkup(inline_keyboard=[
-            [types.InlineKeyboardButton(text="📖 Открыть в Web App", web_app=WebAppInfo(url="https://your-twa-app.vercel.app"))],
+            [types.InlineKeyboardButton(text="📖 Открыть в Web App", web_app=WebAppInfo(url="https://inikonoff.github.io/gramotey-twa/"))],
             [types.InlineKeyboardButton(text="DOCX", callback_data="ex_docx"), types.InlineKeyboardButton(text="TXT", callback_data="ex_txt")]
         ])
         await status.edit_text(f"✅ Прочитано ({len(text)} симв.)\n\n{text[:300]}...\n\nСпрашивай!", reply_markup=kb)
