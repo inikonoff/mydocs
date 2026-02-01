@@ -1,49 +1,51 @@
+import os
 import asyncio
 import logging
 import sqlite3
-import os
 from aiogram import Bot, Dispatcher
-from aiohttp import web
 from dotenv import load_dotenv
+import handlers
 
 load_dotenv()
 
-# Веб-сервер для "обмана" Render (Health Check)
-async def handle_health(request):
-    return web.Response(text="Bot is alive!")
+# Настройка логирования
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-async def start_web_server():
-    app = web.Application()
-    app.router.add_get("/", handle_health)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    # Render дает порт в переменной среды PORT, по умолчанию 10000
-    port = int(os.environ.get("PORT", 10000))
-    site = web.TCPSite(runner, "0.0.0.0", port)
-    await site.start()
-
-def init_db():
-    os.makedirs('data', exist_ok=True)
+def quick_init_db():
+    """Создает папку data и базу данных с нужной структурой"""
+    if not os.path.exists('data'):
+        os.makedirs('data')
     conn = sqlite3.connect('data/database.db')
     cur = conn.cursor()
-    cur.execute('''CREATE TABLE IF NOT EXISTS users 
-        (user_id INTEGER PRIMARY KEY, last_text TEXT, state TEXT)''')
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            user_id INTEGER PRIMARY KEY,
+            last_text TEXT,
+            last_result TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
     conn.commit()
     conn.close()
+    logger.info("База данных инициализирована.")
 
 async def main():
-    logging.basicConfig(level=logging.INFO)
-    init_db()
+    quick_init_db()
     
-    from handlers import register_handlers
-    bot = Bot(token=os.getenv("BOT_TOKEN"))
+    token = os.getenv("BOT_TOKEN")
+    if not token:
+        logger.error("BOT_TOKEN не найден!")
+        return
+
+    bot = Bot(token=token)
     dp = Dispatcher()
-    register_handlers(dp)
-    
-    # Запускаем Health Check сервер
-    await start_web_server()
-    
-    logging.info("🚀 Бот запущен и порт открыт...")
+
+    # Регистрация всех хэндлеров
+    handlers.register_handlers(dp)
+
+    logger.info("Бот запущен...")
+    await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
