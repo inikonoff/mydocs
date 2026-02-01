@@ -1,10 +1,8 @@
-aiogram==3.13.1
-aiohttp==3.11.5
-python-dotenv==1.0.1
-openai==1.51.1
-PyPDF2==3.0.1
-python-docx==1.1.2
+aiogram
+openai
+pymupdf
+python-docx
+reportlab
 yt-dlp
-requests==2.32.3
-pydub==0.25.1
-reportlab==4.2.0
+aiohttp
+python-dotenv
