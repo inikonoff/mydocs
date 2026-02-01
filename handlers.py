@@ -21,7 +21,7 @@ engine = GroqEngine()
 tools = Toolkit()
 
 def db_op(sql, params=(), fetch=False):
-    """Универсальная функция для работы с базой данных"""
+    """Универсальная функция для работы с базой данных SQLite"""
     try:
         conn = sqlite3.connect('data/database.db')
         cur = conn.cursor()
@@ -47,44 +47,44 @@ def get_main_kb():
 
 def register_handlers(dp):
     
-    # --- КОМАНДЫ МЕНЮ ---
+    # --- СИСТЕМНЫЕ КОМАНДЫ ---
 
     @dp.message(Command("start"))
     async def cmd_start(m: types.Message):
         await m.answer(
-            "🤖 **Грамотей готов к работе!**\n\n"
-            "Я помогу тебе переварить любой контент:\n"
-            "• Присылай **PDF, DOCX, TXT** (даже тяжелые)\n"
-            "• Кидай ссылки на **YouTube** (сделаю таймкоды)\n"
-            "• Надиктовывай **голос** или присылай **кружочки**\n\n"
-            "После загрузки я запомню текст, и ты сможешь задавать по нему вопросы прямо в чате.",
+            "🤖 **Грамотей готов!**\n\n"
+            "Я оптимизирован под бесплатные лимиты. Присылай:\n"
+            "• PDF, DOCX, TXT (читаю даже тяжелые файлы)\n"
+            "• Ссылки на YouTube (делаю таймкоды)\n"
+            "• Голосовые и кружочки\n\n"
+            "После загрузки просто пиши вопросы!",
             reply_markup=get_main_kb()
         )
 
     @dp.message(Command("help") or F.text == "❓ Справка")
     async def cmd_help(m: types.Message):
         help_text = (
-            "📖 **Инструкция:**\n\n"
-            "1. **Загрузка:** Просто отправь файл или ссылку. Я отвечу 'Текст обработан'.\n"
-            "2. **Вопросы:** Пиши любой вопрос (например: 'О чем третья глава?' или 'Выпиши главные цифры').\n"
-            "3. **Голос:** Можно не писать, а просто надиктовать вопрос голосом.\n"
-            "4. **Новый файл:** Чтобы сменить тему, нажми 'Очистить контекст'.\n\n"
-            "⚠️ _Если файл очень большой, я проанализирую его по частям для экономии токенов._"
+            "📖 **Инструкция:**\n"
+            "1. Пришли файл или ссылку.\n"
+            "2. Подожди подтверждения 'Текст обработан'.\n"
+            "3. Задавай вопросы текстом или голосом.\n"
+            "4. Для новой темы нажми 'Очистить контекст'."
         )
         await m.answer(help_text, reply_markup=get_main_kb())
 
     @dp.message(Command("clear") or F.text == "🧹 Очистить контекст")
     async def cmd_clear(m: types.Message):
         db_op("DELETE FROM users WHERE user_id=?", (m.from_user.id,))
-        await m.answer("✨ **Память очищена.** Я готов к новому документу!", reply_markup=get_main_kb())
+        await m.answer("✨ **Память очищена.** Жду новый файл!", reply_markup=get_main_kb())
 
     # --- ОБРАБОТКА МЕДИА ---
 
     @dp.message(F.document | F.photo | F.video_note | F.voice | F.audio)
     async def handle_media(m: types.Message, bot):
         uid = m.from_user.id
-        status = await m.answer("⏳ Читаю...")
+        status = await m.answer("⏳ Читаю и распознаю...")
         
+        # Обработка разных типов медиа
         media = m.document or m.voice or m.video_note or m.audio
         if m.photo: media = m.photo[-1]
             
@@ -95,29 +95,29 @@ def register_handlers(dp):
         await bot.download_file(file_info.file_path, path)
         
         try:
+            # Если это аудио/видео
             if m.voice or m.video_note or m.audio:
                 text = await engine.transcribe(path)
                 
-                # Проверка на голосовой вопрос к старому тексту
+                # Проверка на короткий голосовой вопрос
                 old = db_op("SELECT last_text FROM users WHERE user_id=?", (uid,), True)
-                if old and old[0][0] and len(text.split()) < 35:
+                if old and old[0][0] and len(text.split()) < 30:
                     await status.delete()
                     await m.answer(f"🎤 **Вопрос:** _{text}_")
-                    ctx = old[0][0]
-                    # Умное обрезание для Groq
-                    if len(ctx) > 15000:
-                        ctx = ctx[:9000] + "\n[...]\n" + ctx[-6000:]
+                    # Ультра-сжатие контекста для вопроса
+                    ctx = old[0][0][:4000] 
                     ans = await engine.get_response(f"Текст: {ctx}\nВопрос: {text}")
                     await m.answer(ans)
                     return
             else:
+                # Если файл - используем Toolkit (важно иметь PyMuPDF в системе)
                 text = await tools.parse_file(path)
 
             await finish_up(m, status, text)
             
         except Exception as e:
-            logger.error(f"Error: {e}")
-            await status.edit_text("❌ Ошибка при чтении файла. Возможно, там только картинки?")
+            logger.error(f"Media Error: {e}")
+            await status.edit_text("❌ Не удалось прочитать файл. Возможно, он пуст или зашифрован.")
         finally:
             if os.path.exists(path): os.remove(path)
 
@@ -135,7 +135,7 @@ def register_handlers(dp):
                             with open("tmp_cloud", 'wb') as f: f.write(await r.read())
                     text = await tools.parse_file("tmp_cloud")
                     os.remove("tmp_cloud")
-                else: text = "Тип ссылки не поддерживается."
+                else: text = "Ссылка не поддерживается."
             await finish_up(m, status, text)
         except Exception as e:
             await status.edit_text(f"❌ Ошибка ссылки: {e}")
@@ -144,7 +144,6 @@ def register_handlers(dp):
 
     @dp.message(F.text)
     async def chat_qna(m: types.Message):
-        # Игнорируем команды и системные кнопки
         if m.text.startswith("/") or m.text in ["🧹 Очистить контекст", "❓ Справка"]:
             return
         
@@ -153,34 +152,37 @@ def register_handlers(dp):
             full_text = data[0][0]
             await m.bot.send_chat_action(m.chat.id, "typing")
             
-            # Агрессивный чанкинг для лимитов 413
-            if len(full_text) > 18000:
+            # УЛЬТРА-АГРЕССИВНЫЙ ЧАНКИНГ ДЛЯ ЛИМИТА 6000 TPM
+            # Берем 3000 символов из начала и 1500 из конца
+            if len(full_text) > 4500:
                 context = (
-                    "НАЧАЛО:\n" + full_text[:8000] + 
-                    "\n\n...[СРЕДИНА]...\n" + full_text[len(full_text)//2 - 2000 : len(full_text)//2 + 2000] + 
-                    "\n\nКОНЕЦ:\n" + full_text[-5000:]
+                    "СУТЬ НАЧАЛА:\n" + full_text[:3000] + 
+                    "\n\n[...]\n\n" + 
+                    "СУТЬ КОНЦА:\n" + full_text[-1500:]
                 )
-                note = "\n\n⚠️ *Анализ частичный из-за размера файла.*"
+                note = "\n\n⚠️ *Файл очень велик. Анализ ограничен лимитами API.*"
             else:
                 context = full_text
                 note = ""
 
             ans = await engine.get_response(
                 f"Документ: {context}\n\nВопрос: {m.text}",
-                system="Отвечай кратко на основе предоставленного текста."
+                system="Отвечай очень коротко по тексту. Если нет инфы - так и скажи."
             )
             await m.answer(ans + note, parse_mode="Markdown")
         else:
-            await m.answer("У меня нет данных для ответа. Пожалуйста, пришли файл или ссылку.")
+            await m.answer("Сначала пришли файл или ссылку!", reply_markup=get_main_kb())
 
-    # --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
+    # --- ЗАВЕРШЕНИЕ ---
 
     async def finish_up(m, status, text):
-        if not text: return await status.edit_text("❌ Текст не найден.")
+        if not text or len(text.strip()) < 5: 
+            return await status.edit_text("❌ Файл пуст или не содержит текста.")
+            
         db_op("INSERT OR REPLACE INTO users (user_id, last_text) VALUES (?, ?)", (m.from_user.id, text))
         
-        # Ссылка на твой GitHub Pages
-        twa_url = "https://your-username.github.io/gramotey-twa/"
+        # Ссылка на твой GitHub Pages (TWA)
+        twa_url = "https://inikonoff.github.io/gramotey-twa/"
         
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="📖 Читать полностью (Web App)", web_app=WebAppInfo(url=twa_url))],
@@ -192,8 +194,8 @@ def register_handlers(dp):
         
         await status.edit_text(
             f"✅ **Текст обработан!** ({len(text)} симв.)\n\n"
-            f"_{text[:400]}..._\n\n"
-            f"💬 Задавай вопросы по содержанию!",
+            f"_{text[:300]}..._\n\n"
+            f"💬 Спрашивай!",
             reply_markup=kb
         )
 
